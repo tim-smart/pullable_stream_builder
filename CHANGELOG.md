@@ -1,6 +1,6 @@
 ## 0.0.2
 
-- Add `accumulatedBehaviourStream` utility
+- Add extra stream utilities
 
 ## 0.0.1
 
