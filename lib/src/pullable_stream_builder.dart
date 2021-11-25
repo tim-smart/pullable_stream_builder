@@ -16,7 +16,7 @@ class PullableStreamBuilder<T> extends StatefulWidget {
     Key? key,
     required this.stream,
     required this.builder,
-    this.initialDemand = 2,
+    this.initialDemand = 1,
   }) : super(key: key);
 
   final Stream<T> stream;
