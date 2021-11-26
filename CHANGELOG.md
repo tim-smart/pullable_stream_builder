@@ -1,3 +1,7 @@
+## 0.0.6
+
+- Add `withPullableValue` helper
+
 ## 0.0.5
 
 - Refactor `resourceStream`

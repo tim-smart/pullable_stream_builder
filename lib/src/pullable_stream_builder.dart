@@ -28,6 +28,14 @@ class PullableStreamBuilder<T> extends StatefulWidget {
       _PullableStreamBuilderState<T>();
 }
 
+R withPullableValue<T, R>(
+  PullableStreamState<T> value, {
+  required R Function(dynamic) error,
+  required R Function(T) data,
+  required R Function() loading,
+}) =>
+    value.match(error, (o) => o.match(data, loading));
+
 class _PullableStreamBuilderState<T> extends State<PullableStreamBuilder<T>> {
   StreamIteratorTuple<T>? iterator;
   FutureOr<Option<T>> Function() get iteratorPull => iterator!.first;
