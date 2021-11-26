@@ -1,60 +1,67 @@
 import 'dart:async';
+import 'dart:collection';
 
 import 'package:fpdart/fpdart.dart';
+import 'package:rxdart/subjects.dart';
 
-typedef PullResult<T> = Future<Tuple2<Option<T>, bool>>;
-typedef PullFunction<T> = PullResult<T> Function();
-
+typedef PullFunction<T> = FutureOr<Option<T>> Function();
 typedef StreamIteratorTuple<T> = Tuple2<PullFunction<T>, void Function()>;
 
-StreamIteratorTuple<T> streamIterator<T>(Stream<T> stream) {
-  final iterator = StreamIterator(stream);
-
-  Future<Tuple2<Option<T>, bool>> pull() async {
-    final available = await iterator.moveNext();
-    return tuple2(available ? some(iterator.current) : none(), available);
+StreamIteratorTuple<T> streamIterator<T>(
+  Stream<T> stream, {
+  Option<T> initialValue = const None(),
+}) {
+  if (stream is BehaviorSubject<T> && stream.hasValue) {
+    return streamIterator(stream.skip(1), initialValue: optionOf(stream.value));
   }
 
-  return tuple2(pull, iterator.cancel);
-}
+  final queue = Queue<T>();
+  Completer<Option<T>>? puller;
 
-typedef SafePullResult<T> = Future<Option<T>>;
-typedef SafePullFunction<T> = SafePullResult<T> Function();
-typedef SafeStreamIterator<T> = Tuple2<SafePullFunction<T>, void Function()>;
-
-/// Ensures only one running pull operation at a time
-SafeStreamIterator<T> safeStreamIterator<T>(Stream<T> stream) {
-  var pulling = false;
+  late StreamSubscription<T> subscription;
   var complete = false;
   dynamic error;
 
-  final iterator = streamIterator(stream);
-  final pull = iterator.first;
-  final cancel = iterator.second;
-
-  Future<Option<T>> safePull() async {
-    if (error != null) {
-      throw error;
-    } else if (complete || pulling) {
-      return none();
+  void onData(T data) {
+    if (puller != null) {
+      puller?.complete(some(data));
+      puller = null;
+    } else {
+      queue.add(data);
     }
 
-    pulling = true;
-
-    try {
-      final result = await pull();
-      final data = result.first;
-      final hasMore = result.second;
-
-      complete = !hasMore;
-      pulling = false;
-
-      return data;
-    } catch (err) {
-      error = err;
-      rethrow;
-    }
+    subscription.pause();
   }
 
-  return tuple2(safePull, cancel);
+  void cleanup() {
+    complete = true;
+    subscription.cancel();
+  }
+
+  void onError(dynamic err) {
+    error = err;
+    puller?.completeError(error);
+    puller = null;
+    cleanup();
+  }
+
+  FutureOr<Option<T>> pull() {
+    if (queue.isNotEmpty) {
+      final item = queue.removeFirst();
+      return some(item);
+    }
+
+    if (complete) return none();
+    if (error != null) return Future.error(error);
+    if (puller != null) return none();
+
+    puller = Completer.sync();
+    subscription.resume();
+    return puller!.future;
+  }
+
+  subscription = stream.listen(onData, onError: onError, onDone: cleanup);
+  initialValue.map(queue.add);
+
+  return tuple2(pull, cleanup);
 }

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/widgets.dart';
 import 'package:fpdart/fpdart.dart' hide State;
 import 'package:pullable_stream_builder/src/iterators.dart';
@@ -10,7 +11,6 @@ typedef PullableWidgetBuilder<T> = Widget Function(
   void Function(),
 );
 
-@immutable
 class PullableStreamBuilder<T> extends StatefulWidget {
   const PullableStreamBuilder({
     Key? key,
@@ -26,18 +26,11 @@ class PullableStreamBuilder<T> extends StatefulWidget {
   @override
   _PullableStreamBuilderState<T> createState() =>
       _PullableStreamBuilderState<T>();
-
-  Widget build(
-    BuildContext context,
-    PullableStreamState<T> state,
-    VoidCallback pull,
-  ) =>
-      builder(context, state, pull);
 }
 
 class _PullableStreamBuilderState<T> extends State<PullableStreamBuilder<T>> {
-  SafeStreamIterator<T>? iterator;
-  Future<Option<T>> Function() get iteratorPull => iterator!.first;
+  StreamIteratorTuple<T>? iterator;
+  FutureOr<Option<T>> Function() get iteratorPull => iterator!.first;
   VoidCallback get iteratorCancel => iterator!.second;
 
   PullableStreamState<T> state = Either.right(none());
@@ -59,30 +52,41 @@ class _PullableStreamBuilderState<T> extends State<PullableStreamBuilder<T>> {
 
   void _subscribe() {
     if (iterator != null) iteratorCancel();
-    iterator = safeStreamIterator(widget.stream);
+    iterator = streamIterator(widget.stream);
     _initialDemand(widget.initialDemand);
   }
 
-  void _initialDemand(int remaining) async {
+  void _initialDemand(int remaining) {
     if (remaining <= 0) return;
-    await _demand();
-    _initialDemand(remaining - 1);
+    _demand().then((_) => _initialDemand(remaining - 1));
   }
 
-  Future<void> _demand() => iteratorPull().then((data) {
-        data.map((data) {
-          setState(() {
-            state = Either.right(some(data));
-          });
-        });
-      }, onError: (err) {
+  Future<void> _demand() {
+    final result = iteratorPull();
+
+    if (result is Future) {
+      return (result as Future<Option<T>>).then(_handleData, onError: (err) {
         setState(() {
           state = Either.left(err);
         });
       });
+    }
+
+    _handleData(result);
+    return Future.sync(() {});
+  }
+
+  void _handleData(Option<T> data) {
+    data.map((data) {
+      setState(() {
+        state = Either.right(some(data));
+      });
+    });
+  }
 
   @override
-  Widget build(BuildContext context) => widget.build(context, state, _demand);
+  Widget build(BuildContext context) =>
+      widget.builder(context, state, () => Future.microtask(_demand));
 
   @override
   void dispose() {
