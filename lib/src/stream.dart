@@ -142,3 +142,46 @@ BehaviorSubject<R> Function(BehaviorSubject<T>)
 
           return newSubject;
         };
+
+class ResourceStreamState<T, Acc> {
+  const ResourceStreamState({
+    required this.acc,
+    required this.chunk,
+    required this.hasMore,
+  });
+
+  final Acc acc;
+  final List<T> chunk;
+  final bool hasMore;
+}
+
+Stream<T> resourceStream<T, Acc>({
+  required Acc Function() init,
+  required Future<ResourceStreamState<T, Acc>> Function(
+    ResourceStreamState<T, Acc> state,
+  )
+      process,
+  void Function(Acc)? cleanup,
+}) async* {
+  var state = ResourceStreamState<T, Acc>(
+    acc: init(),
+    chunk: [],
+    hasMore: true,
+  );
+
+  while (true) {
+    state = await process(state);
+
+    for (final item in state.chunk) {
+      yield item;
+    }
+
+    if (!state.hasMore) {
+      break;
+    }
+  }
+
+  if (cleanup != null) {
+    cleanup(state.acc);
+  }
+}

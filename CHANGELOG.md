@@ -1,3 +1,7 @@
+## 0.0.4
+
+- Add `resourceStream`
+
 ## 0.0.3
 
 - Implement custom stream iterator with BehaviorSubject support
