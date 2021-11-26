@@ -156,7 +156,7 @@ class ResourceStreamState<T, Acc> {
 }
 
 Stream<T> resourceStream<T, Acc>({
-  required Acc Function() init,
+  required FutureOr<Acc> Function() init,
   required Future<ResourceStreamState<T, Acc>> Function(
     ResourceStreamState<T, Acc> state,
   )
@@ -164,20 +164,16 @@ Stream<T> resourceStream<T, Acc>({
   void Function(Acc)? cleanup,
 }) async* {
   var state = ResourceStreamState<T, Acc>(
-    acc: init(),
+    acc: await init(),
     chunk: [],
     hasMore: true,
   );
 
-  while (true) {
+  while (state.hasMore) {
     state = await process(state);
 
     for (final item in state.chunk) {
       yield item;
-    }
-
-    if (!state.hasMore) {
-      break;
     }
   }
 
