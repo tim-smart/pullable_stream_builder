@@ -26,18 +26,40 @@ class PullableStreamBuilder<T> extends StatefulWidget {
   @override
   _PullableStreamBuilderState<T> createState() =>
       _PullableStreamBuilderState<T>();
+
+  Widget build(
+    BuildContext context,
+    PullableStreamState<T> state,
+    VoidCallback pull,
+  ) =>
+      builder(context, state, pull);
 }
 
 class _PullableStreamBuilderState<T> extends State<PullableStreamBuilder<T>> {
-  late final iterator = safeStreamIterator<T>(widget.stream);
-  late final iteratorPull = iterator.first;
-  late final iteratorCancel = iterator.second;
+  SafeStreamIterator<T>? iterator;
+  Future<Option<T>> Function() get iteratorPull => iterator!.first;
+  VoidCallback get iteratorCancel => iterator!.second;
 
   PullableStreamState<T> state = Either.right(none());
 
   @override
   void initState() {
     super.initState();
+    _subscribe();
+  }
+
+  @override
+  void didUpdateWidget(covariant PullableStreamBuilder<T> oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    if (oldWidget.stream != widget.stream) {
+      _subscribe();
+    }
+  }
+
+  void _subscribe() {
+    if (iterator != null) iteratorCancel();
+    iterator = safeStreamIterator(widget.stream);
     _initialDemand(widget.initialDemand);
   }
 
@@ -60,7 +82,7 @@ class _PullableStreamBuilderState<T> extends State<PullableStreamBuilder<T>> {
       });
 
   @override
-  Widget build(BuildContext context) => widget.builder(context, state, _demand);
+  Widget build(BuildContext context) => widget.build(context, state, _demand);
 
   @override
   void dispose() {
