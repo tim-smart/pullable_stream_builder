@@ -1,3 +1,7 @@
+## 0.0.8
+
+- Add sync: true to BehaviorSubject's
+
 ## 0.0.7
 
 - Tweak iterator API

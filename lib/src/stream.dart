@@ -109,7 +109,7 @@ BehaviorSubject<IList<T>> accumulatedBehaviourStream<T>(
   Stream<IList<T>> stream,
 ) {
   final accStream = accumulatedStream(stream);
-  final subject = BehaviorSubject<IList<T>>();
+  final subject = BehaviorSubject<IList<T>>(sync: true);
   subject.addStream(accStream).whenComplete(subject.close);
   return subject;
 }
@@ -131,8 +131,8 @@ PersistedIListStreamFactory persistedAccumulatedStream(Storage storage) => <T>({
 BehaviorSubject<R> Function(BehaviorSubject<T>)
     transformedBehaviorSubject<T, R>(R Function(T) predicate) => (subject) {
           final newSubject = optionOf(subject.valueOrNull).map(predicate).match(
-                (initial) => BehaviorSubject.seeded(initial),
-                () => BehaviorSubject<R>(),
+                (initial) => BehaviorSubject.seeded(initial, sync: true),
+                () => BehaviorSubject<R>(sync: true),
               );
 
           newSubject
