@@ -1,3 +1,7 @@
+## 0.0.7
+
+- Tweak iterator API
+
 ## 0.0.6
 
 - Add `withPullableValue` helper
