@@ -38,7 +38,7 @@ R withPullableValue<T, R>(
 
 class _PullableStreamBuilderState<T> extends State<PullableStreamBuilder<T>> {
   StreamIteratorTuple<T>? iterator;
-  FutureOr<Option<T>> Function() get iteratorPull => iterator!.first;
+  PullFunction<T> get iteratorPull => iterator!.first;
   VoidCallback get iteratorCancel => iterator!.second;
 
   PullableStreamState<T> state = Either.right(none());
@@ -69,20 +69,13 @@ class _PullableStreamBuilderState<T> extends State<PullableStreamBuilder<T>> {
     _demand().then((_) => _initialDemand(remaining - 1));
   }
 
-  Future<void> _demand() {
-    final result = iteratorPull();
-
-    if (result is Future) {
-      return (result as Future<Option<T>>).then(_handleData, onError: (err) {
-        setState(() {
-          state = Either.left(err);
-        });
-      });
-    }
-
-    _handleData(result);
-    return Future.sync(() {});
-  }
+  Future<void> _demand() => iteratorPull().match(
+        (future) => future.then(_handleData),
+        (o) {
+          _handleData(o);
+          return Future.sync(() {});
+        },
+      );
 
   void _handleData(Option<T> data) {
     data.map((data) {

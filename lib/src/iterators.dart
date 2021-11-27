@@ -4,7 +4,8 @@ import 'dart:collection';
 import 'package:fpdart/fpdart.dart';
 import 'package:rxdart/subjects.dart';
 
-typedef PullFunction<T> = FutureOr<Option<T>> Function();
+typedef PullResult<T> = Either<Future<Option<T>>, Option<T>>;
+typedef PullFunction<T> = PullResult<T> Function();
 typedef StreamIteratorTuple<T> = Tuple2<PullFunction<T>, void Function()>;
 
 StreamIteratorTuple<T> streamIterator<T>(
@@ -45,19 +46,19 @@ StreamIteratorTuple<T> streamIterator<T>(
     cleanup();
   }
 
-  FutureOr<Option<T>> pull() {
+  PullResult<T> pull() {
     if (queue.isNotEmpty) {
       final item = queue.removeFirst();
-      return some(item);
+      return Either.right(some(item));
     }
 
-    if (complete) return none();
-    if (error != null) return Future.error(error);
-    if (puller != null) return none();
+    if (error != null) return Either.left(Future.error(error));
+    if (complete) return Either.right(none());
+    if (puller != null) return Either.right(none());
 
     puller = Completer.sync();
     subscription.resume();
-    return puller!.future;
+    return Either.left(puller!.future);
   }
 
   subscription = stream.listen(onData, onError: onError, onDone: cleanup);
