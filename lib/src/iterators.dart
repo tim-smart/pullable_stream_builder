@@ -19,7 +19,7 @@ StreamIteratorTuple<T> streamIterator<T>(
   final queue = Queue<T>();
   Completer<Option<T>>? puller;
 
-  late StreamSubscription<T> subscription;
+  StreamSubscription<T>? subscription;
   var complete = false;
   dynamic error;
 
@@ -31,12 +31,15 @@ StreamIteratorTuple<T> streamIterator<T>(
       queue.add(data);
     }
 
-    subscription.pause();
+    subscription!.pause();
   }
 
   void cleanup() {
     complete = true;
-    subscription.cancel();
+    subscription?.cancel();
+
+    puller?.complete(none());
+    puller = null;
   }
 
   void onError(dynamic err) {
@@ -44,6 +47,14 @@ StreamIteratorTuple<T> streamIterator<T>(
     puller?.completeError(error);
     puller = null;
     cleanup();
+  }
+
+  void resume() {
+    if (subscription == null) {
+      subscription = stream.listen(onData, onError: onError, onDone: cleanup);
+    } else {
+      subscription!.resume();
+    }
   }
 
   PullResult<T> pull() {
@@ -56,12 +67,12 @@ StreamIteratorTuple<T> streamIterator<T>(
     if (complete) return Either.right(none());
     if (puller != null) return Either.right(none());
 
+    resume();
+
     puller = Completer.sync();
-    subscription.resume();
     return Either.left(puller!.future);
   }
 
-  subscription = stream.listen(onData, onError: onError, onDone: cleanup);
   initialValue.map(queue.add);
 
   return tuple2(pull, cleanup);
