@@ -2,9 +2,11 @@ import 'dart:async';
 import 'dart:collection';
 
 import 'package:fpdart/fpdart.dart';
-import 'package:rxdart/subjects.dart';
+import 'package:rxdart/rxdart.dart';
 
-typedef PullResult<T> = Either<Future<Option<T>>, Option<T>>;
+/// tuple2<optionOf(chunk), hasMore>
+typedef PullData<T> = Tuple2<Option<T>, bool>;
+typedef PullResult<T> = Either<Future<PullData<T>>, PullData<T>>;
 typedef PullFunction<T> = PullResult<T> Function();
 typedef StreamIteratorTuple<T> = Tuple2<PullFunction<T>, void Function()>;
 
@@ -12,7 +14,7 @@ StreamIteratorTuple<T> streamIterator<T>(
   Stream<T> stream, {
   Option<T> initialValue = const None(),
 }) {
-  if (stream is BehaviorSubject<T> && stream.hasValue) {
+  if (stream is ValueStream<T> && stream.hasValue) {
     return streamIterator(stream.skip(1), initialValue: optionOf(stream.value));
   }
 
@@ -22,6 +24,14 @@ StreamIteratorTuple<T> streamIterator<T>(
   StreamSubscription<T>? subscription;
   var complete = false;
   dynamic error;
+
+  bool hasMore() => !complete || error == null;
+
+  PullResult<T> noData() => Either.right(Tuple2(const None(), hasMore()));
+  PullResult<T> syncData(T data) => Either.right(Tuple2(Some(data), hasMore()));
+  PullResult<T> asyncData(Future<Option<T>> data) =>
+      Either.left(data.then((data) => Tuple2(data, hasMore())));
+  PullResult<T> withError(dynamic err) => Either.left(Future.error(err));
 
   void onData(T data) {
     if (puller != null) {
@@ -60,17 +70,17 @@ StreamIteratorTuple<T> streamIterator<T>(
   PullResult<T> pull() {
     if (queue.isNotEmpty) {
       final item = queue.removeFirst();
-      return Either.right(some(item));
+      return syncData(item);
     }
 
-    if (error != null) return Either.left(Future.error(error));
-    if (complete) return Either.right(none());
-    if (puller != null) return Either.right(none());
+    if (error != null) return withError(error);
+    if (complete) return noData();
+    if (puller != null) return noData();
 
     resume();
 
     puller = Completer.sync();
-    return Either.left(puller!.future);
+    return asyncData(puller!.future);
   }
 
   initialValue.map(queue.add);

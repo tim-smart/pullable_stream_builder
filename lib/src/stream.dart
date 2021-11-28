@@ -20,7 +20,7 @@ Stream<IList<T>> chunkedStream<T>(
         .bufferCount(chunkSize)
         .scan<IList<T>>((acc, chunk, index) => acc.addAll(chunk), IList());
 
-typedef PersistedStreamFactory = BehaviorSubject<T> Function(Stream<T>)
+typedef PersistedStreamFactory = ValueStream<T> Function(Stream<T>)
     Function<T>({
   required String key,
   required Object? Function(T) toJson,
@@ -42,6 +42,35 @@ bool iListSkipPredicate<T>(IList<T> prev, IList<T> next) {
   return prev.sublist(0, nextLength) == next;
 }
 
+final _cache = <String, dynamic>{};
+
+Option<T> Function() _readCache<T>(
+  Storage storage,
+  String key,
+  T Function(Object?) fromJson,
+) =>
+    () {
+      if (_cache.containsKey(key)) return _cache[key];
+
+      final data = storage
+          .read(key)
+          .flatMap((json) => Option.tryCatch(() => fromJson(jsonDecode(json))));
+      _cache[key] = data;
+      return data;
+    };
+
+void Function(T) _writeCache<T>(
+  Storage storage,
+  String key,
+  Object? Function(T) toJson,
+) =>
+    (value) {
+      try {
+        storage.write(key, jsonEncode(toJson(value)));
+      } catch (_) {}
+      _cache[key] = some(value);
+    };
+
 PersistedStreamFactory persistedStream(
   Storage storage,
 ) =>
@@ -52,15 +81,11 @@ PersistedStreamFactory persistedStream(
       skipPredicate,
     }) {
       final storageKey = 'PullableStreamBuilder_$key';
+      final read = _readCache(storage, storageKey, fromJson);
+      final write = _writeCache(storage, storageKey, toJson);
 
       return (Stream<T> stream) {
-        final initialValue = storage.read(storageKey).flatMap(
-            (json) => Option.tryCatch(() => fromJson(jsonDecode(json))));
-
-        final subject = initialValue.match<BehaviorSubject<T>>(
-          (initial) => BehaviorSubject.seeded(initial, sync: true),
-          () => BehaviorSubject(sync: true),
-        );
+        final initialValue = read();
 
         stream = initialValue.match(
           (prev) => stream.skipWhile(
@@ -68,20 +93,17 @@ PersistedStreamFactory persistedStream(
           () => stream,
         );
 
-        final writeStream = stream.doOnData((event) {
-          try {
-            storage.write(storageKey, jsonEncode(toJson(event)));
-          } catch (_) {}
-        });
+        final writeStream = stream.doOnData(write);
 
-        subject.addStream(writeStream).whenComplete(subject.close);
-
-        return subject;
+        return initialValue.match<ValueStream<T>>(
+          (initial) => writeStream.publishValueSeeded(initial),
+          () => writeStream.publishValue(),
+        );
       };
     };
 
 typedef PersistedIListStreamFactory
-    = BehaviorSubject<IList<T>> Function(Stream<IList<T>>) Function<T>({
+    = ValueStream<IList<T>> Function(Stream<IList<T>>) Function<T>({
   required String key,
   required Object? Function(T) toJson,
   required T Function(Object?) fromJson,
@@ -105,43 +127,31 @@ Stream<IList<T>> accumulatedStream<T>(Stream<IList<T>> stream) =>
       IList(),
     );
 
-BehaviorSubject<IList<T>> accumulatedBehaviourStream<T>(
-  Stream<IList<T>> stream,
-) {
-  final accStream = accumulatedStream(stream);
-  final subject = BehaviorSubject<IList<T>>(sync: true);
-  subject.addStream(accStream).whenComplete(subject.close);
-  return subject;
-}
+ValueStream<IList<T>> accumulatedValueStream<T>(Stream<IList<T>> stream) =>
+    accumulatedStream(stream).publishValue();
 
 PersistedIListStreamFactory persistedAccumulatedStream(Storage storage) => <T>({
       required key,
       required toJson,
       required fromJson,
     }) =>
-        (Stream<IList<T>> stream) {
-          final accStream = accumulatedStream(stream);
-          return persistedIListStream(storage)<T>(
-            key: key,
-            toJson: toJson,
-            fromJson: fromJson,
-          )(accStream);
-        };
+        (Stream<IList<T>> stream) => persistedIListStream(storage)<T>(
+              key: key,
+              toJson: toJson,
+              fromJson: fromJson,
+            )(accumulatedStream(stream));
 
-BehaviorSubject<R> Function(BehaviorSubject<T>)
-    transformedBehaviorSubject<T, R>(R Function(T) predicate) => (subject) {
-          final newSubject = optionOf(subject.valueOrNull).map(predicate).match(
-                (initial) => BehaviorSubject.seeded(initial, sync: true),
-                () => BehaviorSubject<R>(sync: true),
-              );
+Stream<R> Function(ValueStream<T>) transformedValueStream<T, R>(
+  R Function(T) predicate,
+) =>
+    (stream) {
+      final mappedStream = stream.map(predicate);
 
-          newSubject
-              .addStream(
-                  (subject.hasValue ? subject.skip(1) : subject).map(predicate))
-              .whenComplete(newSubject.close);
-
-          return newSubject;
-        };
+      return optionOf(stream.valueOrNull).map(predicate).match(
+            (initial) => mappedStream.publishValueSeeded(initial),
+            () => mappedStream,
+          );
+    };
 
 class ResourceStreamState<T, Acc> {
   const ResourceStreamState({

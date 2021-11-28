@@ -3,7 +3,7 @@ import 'package:flutter/widgets.dart';
 import 'package:fpdart/fpdart.dart' hide State;
 import 'package:pullable_stream_builder/src/iterators.dart';
 
-typedef PullableStreamState<T> = Either<dynamic, Option<T>>;
+typedef PullableStreamState<T> = Either<dynamic, Tuple2<Option<T>, bool>>;
 
 typedef PullableWidgetBuilder<T> = Widget Function(
   BuildContext,
@@ -31,17 +31,17 @@ class PullableStreamBuilder<T> extends StatefulWidget {
 R withPullableValue<T, R>(
   PullableStreamState<T> value, {
   required R Function(dynamic) error,
-  required R Function(T) data,
+  required R Function(T, bool) data,
   required R Function() loading,
 }) =>
-    value.match(error, (o) => o.match(data, loading));
+    value.match(error, (s) => s.first.match((v) => data(v, s.second), loading));
 
 class _PullableStreamBuilderState<T> extends State<PullableStreamBuilder<T>> {
   StreamIteratorTuple<T>? iterator;
   PullFunction<T> get iteratorPull => iterator!.first;
   VoidCallback get iteratorCancel => iterator!.second;
 
-  PullableStreamState<T> state = Either.right(none());
+  PullableStreamState<T> state = Either.right(tuple2(none(), true));
 
   @override
   void initState() {
@@ -77,10 +77,10 @@ class _PullableStreamBuilderState<T> extends State<PullableStreamBuilder<T>> {
         },
       );
 
-  void _handleData(Option<T> data) {
-    data.map((data) {
+  void _handleData(PullData<T> data) {
+    data.first.map((value) {
       setState(() {
-        state = Either.right(some(data));
+        state = Either.right(tuple2(some(value), data.second));
       });
     });
   }
