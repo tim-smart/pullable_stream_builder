@@ -1,3 +1,8 @@
+## 0.0.10
+
+- Use `ValueStream` over `BehaviorSubject`
+- Expose `hasMore` to PullableStreamBuilder
+
 ## 0.0.9
 
 - iterator improvements

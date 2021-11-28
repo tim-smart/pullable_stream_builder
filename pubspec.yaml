@@ -1,6 +1,6 @@
 name: pullable_stream_builder
 description: A new Flutter package project.
-version: 0.0.9
+version: 0.0.10
 homepage: https://github.com/tim-smart/pullable_stream_builder
 
 environment:
